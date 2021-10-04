@@ -1,11 +1,12 @@
 module shadowmask
 (
     input             clk,
+    input             clk_sys,
+	 
+    input             cmd_wr,
+    input      [15:0] cmd_in,
 
-    input       [2:0] shadowmask_type,
     input      [23:0] din,
-    input             mask_rotate,
-    input             mask_2x,
     input             hs_in,vs_in,
     input             de_in,
 
@@ -27,14 +28,14 @@ reg [3:0] vmax;
 reg [3:0] hmax2;
 reg [3:0] vmax2;
 
-
 reg [2:0] hindex;
 reg [2:0] vindex;
 reg [2:0] hindex2;
 reg [2:0] vindex2;
 
-
-wire [2:0] mask_num = shadowmask_type-3'b1;
+reg mask_2x;
+reg mask_rotate;
+reg mask_enable;
 
 always @(posedge clk) begin
 
@@ -51,15 +52,10 @@ always @(posedge clk) begin
     hindex2 <= mask_rotate ? vindex : hindex;
     vindex2 <= mask_rotate ? hindex : vindex;
 
-    // Each mask pattern is stored in mask_lut.  The last 2 entries of the
-    // first row of pattern are the size of the patteen in pixels - 1.
     // hmax and vmax store these sizes
     // hmax2 and vmax2 swap the values to handle rotation
-    hmax <= mask_lut[{mask_num, 2'b0, 3'd6}] << mask_2x;
-    vmax <= mask_lut[{mask_num, 2'b0, 3'd7}] << mask_2x;
-    hmax2 <= mask_rotate ? vmax : hmax;
-    vmax2 <= mask_rotate ? hmax : vmax;
-
+    hmax2 <= mask_rotate ? ( vmax << mask_2x ) : ( hmax << mask_2x );
+    vmax2 <= mask_rotate ? ( hmax << mask_2x ) : ( vmax << mask_2x );
 
     if((old_vs && ~vs_in)) vcount <= 4'b0;
     if(old_hs && ~hs_in) begin
@@ -103,30 +99,7 @@ reg [23:0] d;
 // "5,3," means this pattern is 6x4 pixels.
 
 
-wire [2:0] mask_lut[6*32] = '{4,4,2,2,1,1,5,3, //VGA Type Mask
-                              4,4,2,2,1,1,0,0,
-                              2,1,1,4,4,2,0,0,
-                              2,1,1,4,4,2,0,0,
-                              4,4,2,2,1,1,5,1, //Squished vga mask
-                              2,1,1,4,4,2,0,0,
-                              4,4,2,2,1,1,0,0,
-                              2,1,1,4,4,2,0,0,
-                              4,2,1,4,2,1,2,0, //Thin RGB Stripes
-                              4,2,1,4,2,1,0,0,
-                              4,2,1,4,2,1,0,0,
-                              4,2,1,4,2,1,0,0,
-                              5,2,5,2,5,2,1,0, //Magenta/Green Stripes
-                              5,2,5,2,5,2,0,0,
-                              5,2,5,2,5,2,0,0,
-                              5,2,5,2,5,2,0,0,
-                              7,7,0,7,7,0,2,0, //Monochrome stripes
-                              7,7,0,7,7,0,0,0,
-                              7,7,0,7,7,0,0,0,
-                              7,7,0,7,7,0,0,0,
-                              4,6,3,1,0,0,3,0, //RYCB Stripes
-                              4,6,3,1,0,0,0,0,
-                              4,6,3,1,0,0,0,0,
-                              4,6,3,1,0,0,0,0};
+reg [2:0] mask_lut[64];
 
 always @(posedge clk) begin
 
@@ -135,10 +108,8 @@ always @(posedge clk) begin
     reg de1,de2,vs1,vs2,hs1,hs2;
     reg [8:0] r2, g2, b2; //9 bits to handle overflow when we add to bright colors.
     reg [7:0] r3, g3, b3; //These are the final colors.
-    reg mask_disable;
 
-    {rbit,gbit, bbit} = mask_lut[{mask_num,vindex2[1:0],hindex2[2:0]}];
-    mask_disable = (mask_num > 5) ? 1'b1 : 1'b0;
+    {rbit,gbit, bbit} = mask_lut[{vindex2[2:0],hindex2[2:0]}];
 
     // I add 12.5% of the Color value and then subrtact 50% if the mask should be dark
     r2 <= r + {3'b0, r[7:3]} - (rbit ?  9'b0 : {2'b0, r[7:1]});
@@ -152,10 +123,22 @@ always @(posedge clk) begin
 
     // I don't know how to keep the color aligned with the sync to avoid a shift.
     // This code is left over from the original hdmi scanlines code.
-    dout <= mask_disable ? {r,g,b} : {r3 ,g3, b3};
-    vs_out <= ~mask_disable ? vs2 : vs_in;   vs2   <= vs1;   vs1   <= vs_in;
-    hs_out <= ~mask_disable ? hs2 : hs_in;   hs2   <= hs1;   hs1   <= hs_in;
-    de_out <= ~mask_disable ? de2 : de_in;   de2   <= de1;   de1   <= de_in;
+    dout <= ~mask_enable ? {r,g,b} : {r3 ,g3, b3};
+    vs_out <= mask_enable ? vs2 : vs_in;   vs2   <= vs1;   vs1   <= vs_in;
+    hs_out <= mask_enable ? hs2 : hs_in;   hs2   <= hs1;   hs1   <= hs_in;
+    de_out <= mask_enable ? de2 : de_in;   de2   <= de1;   de1   <= de_in;
+end
+
+// 000_000_000_000_000_
+always @(posedge clk_sys) begin
+    if (cmd_wr) begin
+        case(cmd_in[15:13])
+        3'b000: {mask_rotate, mask_2x, mask_enable} <= cmd_in[2:0];
+        3'b001: vmax <= cmd_in[3:0];
+        3'b010: hmax <= cmd_in[3:0];
+        3'b011: mask_lut[cmd_in[9:4]] <= cmd_in[2:0];
+        endcase
+    end
 end
 
 endmodule

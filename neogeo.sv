@@ -68,9 +68,6 @@ module emu
 	output        VGA_DE,    // = ~(VBlank | HBlank)
 	output        VGA_F1,
 	output [1:0]  VGA_SL,
-	output [2:0]  SHADOWMASK, //Type of HDMI shadowmask overlay
-	output        MASK_ROTATE,
-	output        MASK_2X,
 	output        VGA_SCALER, // Force VGA scaler
 
 	input  [11:0] HDMI_WIDTH,
@@ -306,9 +303,6 @@ localparam CONF_STR = {
 	"OG,Width,320px,304px;",
 	"o01,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	"oDF,Shadow Mask,None,Shadow 1,Shadow 2,RGB Stripe,MG Stripe,Mono Stripe,RYCB Stripe;",
-	"oG,Mask Double Size,No,Yes;",
-	"oH,Mask Rotate,No,Yes;",
 	"-;",
 	"d5o2,Vertical Crop,Disabled,216p(5x);",
 	"d5o36,Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
@@ -1876,11 +1870,6 @@ end
 
 assign VGA_SL = scale ? scale[1:0] - 1'd1 : 2'd0;
 assign VGA_F1 = 0;
-
-//wire [2:0] shadowmask_type = status[47:45];
-assign SHADOWMASK = status[47:45];
-assign MASK_2X = status[48];
-assign MASK_ROTATE = status[49];
 
 wire [2:0] scale = status[20:18];
 

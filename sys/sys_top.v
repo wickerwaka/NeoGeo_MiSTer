@@ -335,6 +335,7 @@ always@(posedge clk_sys) begin
 
 	old_strobe <= io_strobe;
 	coef_wr <= 0;
+	shadowmask_wr <= 0;
 
 	if(~io_uio) begin
 		has_cmd <= 0;
@@ -452,6 +453,7 @@ always@(posedge clk_sys) begin
 					 3: arc2y <= io_din[12:0];
 				endcase
 			end
+			if(cmd == 'h3D) {shadowmask_wr,shadowmask_data} <= {1'b1, io_din};
 		end
 	end
 
@@ -1081,13 +1083,18 @@ scanlines #(1) HDMI_scanlines
 
 wire [23:0] hdmi_data_mask;
 wire        hdmi_de_mask, hdmi_vs_mask, hdmi_hs_mask;
+
+reg [15:0] shadowmask_data;
+reg        shadowmask_wr = 0;
+
 shadowmask HDMI_shadowmask
 (
 	.clk(clk_hdmi),
+	.clk_sys(clk_sys),
 
-	.shadowmask_type(shadowmask_type),
-	.mask_2x(mask_2x),
-	.mask_rotate(mask_rotate),	
+	.cmd_wr(shadowmask_wr),
+	.cmd_in(shadowmask_data),
+
 	.din(hdmi_data_sl),
 	.hs_in(hdmi_hs_sl),
 	.vs_in(hdmi_vs_sl),
@@ -1453,8 +1460,6 @@ wire [15:0] audio_l, audio_r;
 wire        audio_s;
 wire  [1:0] audio_mix;
 wire  [1:0] scanlines;
-wire  [2:0] shadowmask_type;
-wire        mask_rotate, mask_2x;
 wire  [7:0] r_out, g_out, b_out, hr_out, hg_out, hb_out;
 wire        vs_fix, hs_fix, de_emu, vs_emu, hs_emu, f1;
 wire        hvs_fix, hhs_fix, hde_emu;
@@ -1551,9 +1556,6 @@ emu emu
 	.CLK_VIDEO(clk_vid),
 	.CE_PIXEL(ce_pix),
 	.VGA_SL(scanlines),
-	.SHADOWMASK(shadowmask_type),
-	.MASK_ROTATE(mask_rotate),
-	.MASK_2X(mask_2x),
 	.VIDEO_ARX(ARX),
 	.VIDEO_ARY(ARY),
 
